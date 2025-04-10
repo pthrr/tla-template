@@ -1,0 +1,63 @@
+version: "3"
+
+env:
+  TLA2TOOLS_JAR: "{{.TASKFILE_DIR}}/bin/tla2tools.jar"
+  TLA2JSON_JAR: "{{.TASKFILE_DIR}}/bin/tla2json-1.0.1.jar"
+
+tasks:
+  default:
+    desc: List all tasks
+    cmds:
+      - go-task --list-all
+    silent: true
+    hidden: true
+
+  init:
+    desc: Scaffold a new TLA+ spec
+    cmds:
+      - ./scripts/tlaq.bash init {{.CLI_ARGS}}
+
+  check:
+    desc: Run model checker (TLC or Apalache)
+    cmds:
+      - ./scripts/tlaq.bash check {{.CLI_ARGS}} | grep -v '@!@!@'
+
+  simulate:
+    desc: Run TLC simulation
+    cmds:
+      - ./scripts/tlaq.bash simulate {{.CLI_ARGS}}
+
+  trace:
+    desc: Show last counterexample trace
+    cmds:
+      - ./scripts/tlaq.bash trace {{.CLI_ARGS}}
+
+  json:
+    desc: Export last trace as JSON
+    cmds:
+      - ./scripts/tlaq.bash json {{.CLI_ARGS}}
+
+  types:
+    desc: Show inferred types (Apalache)
+    cmds:
+      - ./scripts/tlaq.bash types {{.CLI_ARGS}}
+
+  list:
+    desc: List all specs
+    cmds:
+      - ./scripts/tlaq.bash list
+
+  watch:
+    desc: Re-check on file save (requires inotify)
+    cmds:
+      - ./scripts/tlaq.bash watch {{.CLI_ARGS}}
+
+  clean:
+    desc: Remove generated outputs
+    cmds:
+      - ./scripts/tlaq.bash clean
+
+  doctor:
+    desc: Show installed tools and backend status
+    cmds:
+      - ./scripts/tlaq.bash doctor
