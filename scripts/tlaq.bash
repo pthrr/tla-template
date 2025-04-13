@@ -87,7 +87,12 @@ run_backend_check() {
       ;;
     tlc)
       echo "🔍 [TLC] Model checking..."
-      java $JAVA_OPTS -cp "$JAR" tlc2.TLC -deadlock -tool -config "$CFG" "$TLA"
+
+      if grep -q -- '--algorithm' "$TLA"; then
+        java $JAVA_OPTS -cp "$JAR" pcal.trans "$TLA"
+      fi
+
+      java $JAVA_OPTS -cp "$JAR" tlc2.TLC -deadlock -tool -config $CFG "$TLA"
       ;;
   esac
 }
