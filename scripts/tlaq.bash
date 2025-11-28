@@ -1,19 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CMD="${1:-help}"
-BACKEND="${2:-tlc}"
-SPEC="${3:-MySpec}"
+echo_error() {
+  printf "\033[1;31m%s\033[0m\n" "$*"
+}
 
-if ! [[ "$SPEC" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-  echo_error "❌ Invalid spec name. Use letters, digits, or underscores only."
+# Parse command
+CMD="${1:-help}"
+shift || true
+
+# Parse remaining args
+BACKEND="tlc"
+SPEC=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --backend|-b)
+      BACKEND="$2"
+      shift 2
+      ;;
+    *)
+      SPEC="$1"
+      shift
+      ;;
+  esac
+done
+
+# Validate backend
+if [[ "$BACKEND" != "tlc" && "$BACKEND" != "apalache" ]]; then
+  echo_error "❌ Invalid backend '$BACKEND'. Must be 'tlc' or 'apalache'."
   exit 1
 fi
 
+# Strip .tla extension if present
+if [[ -n "$SPEC" && "$SPEC" == *.tla ]]; then
+  SPEC="${SPEC%.tla}"
+fi
+
+# Set paths (will be set even if SPEC is empty, commands can check)
 TLA="${SPEC}.tla"
 CFG="${SPEC}.cfg"
 JAR="${TLA2TOOLS_JAR:-tla2tools.jar}"
 JSON_JAR="${TLA2JSON_JAR:-tla2json.jar}"
+APALACHE_JAR="${APALACHE_JAR:-apalache.jar}"
 JAVA_OPTS="${JAVA_OPTS:-"-Xmx2G -XX:+UseParallelGC"}"
 
 echo_error() {
@@ -43,7 +72,8 @@ require_toolchain() {
       [[ -f "$JAR" ]] || { echo_error "❌ TLC jar not found: $JAR"; exit 1; }
       ;;
     apalache)
-      require_tool apalache
+      require_tool java
+      [[ -f "$APALACHE_JAR" ]] || { echo_error "❌ Apalache jar not found: $APALACHE_JAR"; exit 1; }
       ;;
   esac
 }
@@ -56,7 +86,8 @@ describe_toolchain() {
       echo -n "• jar:  "; [[ -f "$JAR" ]] && echo "$JAR" || echo_error "❌ missing"
       ;;
     apalache)
-      echo -n "• apalache: "; command -v apalache || echo_error "❌ missing"
+      echo -n "• java: "; command -v java >/dev/null && java -version 2>&1 | head -n1 || echo_error "❌ missing"
+      echo -n "• jar:  "; [[ -f "$APALACHE_JAR" ]] && echo "$APALACHE_JAR" || echo_error "❌ missing"
       ;;
   esac
   echo -n "• jq: "; command -v jq >/dev/null && jq --version || echo_error "❌ missing"
@@ -80,19 +111,29 @@ check_files() {
 run_backend_check() {
   require_toolchain "$BACKEND"
   check_files
+
+  # Detect number of CPU cores
+  local nworkers=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
   case "$BACKEND" in
     apalache)
       echo "🔍 [Apalache] Checking..."
-      apalache check "$TLA"
+      # Use TLC config file if it exists
+      local config_args=()
+      if [[ -f "$CFG" ]]; then
+        config_args=("--config=$CFG")
+      fi
+      # Limit search depth
+      java $JAVA_OPTS -jar "$APALACHE_JAR" check --length=5 "${config_args[@]}" "$TLA"
       ;;
     tlc)
-      echo "🔍 [TLC] Model checking..."
+      echo "🔍 [TLC] Model checking (${nworkers} workers)..."
 
       if grep -q -- '--algorithm' "$TLA"; then
         java $JAVA_OPTS -cp "$JAR" pcal.trans "$TLA"
       fi
 
-      java $JAVA_OPTS -cp "$JAR" tlc2.TLC -deadlock -tool -config $CFG "$TLA"
+      java $JAVA_OPTS -cp "$JAR" tlc2.TLC -workers $nworkers -deadlock -tool -config $CFG "$TLA"
       ;;
   esac
 }
@@ -109,7 +150,7 @@ run_backend_simulate() {
 
 run_apalache_types() {
   echo "🧠 [Apalache] Showing inferred types..."
-  apalache typecheck "$TLA"
+  java $JAVA_OPTS -jar "$APALACHE_JAR" typecheck "$TLA"
 }
 
 dump_trace_tlc() {

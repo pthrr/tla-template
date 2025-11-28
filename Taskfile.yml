@@ -3,6 +3,7 @@ version: "3"
 env:
   TLA2TOOLS_JAR: "{{.TASKFILE_DIR}}/bin/tla2tools.jar"
   TLA2JSON_JAR: "{{.TASKFILE_DIR}}/bin/tla2json-1.0.1.jar"
+  APALACHE_JAR: "{{.TASKFILE_DIR}}/bin/apalache.jar"
 
 tasks:
   default:
@@ -60,4 +61,4 @@ tasks:
   doctor:
     desc: Show installed tools and backend status
     cmds:
-      - ./scripts/tlaq.bash doctor
+      - ./scripts/tlaq.bash doctor {{.CLI_ARGS}}
