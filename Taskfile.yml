@@ -38,6 +38,26 @@ tasks:
     cmds:
       - ./scripts/tlaq.bash json {{.CLI_ARGS}}
 
+  plot:
+    desc: Visualize trace (table view)
+    cmds:
+      - ./scripts/tlaq.bash plot {{.CLI_ARGS}}
+
+  plot-dot:
+    desc: Generate GraphViz DOT diagram from trace
+    cmds:
+      - ./scripts/tlaq.bash plot {{.CLI_ARGS}} --dot trace.dot
+
+  plot-png:
+    desc: Generate PNG diagram from trace (requires graphviz)
+    cmds:
+      - ./scripts/tlaq.bash plot {{.CLI_ARGS}} --png trace.png
+
+  plot-mermaid:
+    desc: Generate Mermaid diagram from trace
+    cmds:
+      - ./scripts/tlaq.bash plot {{.CLI_ARGS}} --mermaid trace.mmd
+
   types:
     desc: Show inferred types (Apalache)
     cmds:

@@ -12,6 +12,7 @@ shift || true
 # Parse remaining args
 BACKEND="tlc"
 SPEC=""
+EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -20,8 +21,14 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
-      SPEC="$1"
-      shift
+      if [[ -z "$SPEC" ]]; then
+        SPEC="$1"
+        shift
+      else
+        # Save remaining args for subcommands
+        EXTRA_ARGS+=("$1")
+        shift
+      fi
       ;;
   esac
 done
@@ -80,6 +87,8 @@ require_toolchain() {
 
 describe_toolchain() {
   echo "🔧 Toolchain check for backend: $BACKEND"
+  echo ""
+  echo "Required:"
   case "$BACKEND" in
     tlc)
       echo -n "• java: "; command -v java >/dev/null && java -version 2>&1 | head -n1 || echo_error "❌ missing"
@@ -90,10 +99,15 @@ describe_toolchain() {
       echo -n "• jar:  "; [[ -f "$APALACHE_JAR" ]] && echo "$APALACHE_JAR" || echo_error "❌ missing"
       ;;
   esac
-  echo -n "• jq: "; command -v jq >/dev/null && jq --version || echo_error "❌ missing"
-  echo -n "• pandoc: "; command -v pandoc >/dev/null && pandoc --version | head -n1 || echo_error "❌ missing"
-  echo -n "• inotifywait: "; command -v inotifywait || echo_error "❌ missing"
-  echo -n "• tla2json.jar: "; [[ -f "$JSON_JAR" ]] && echo "$JSON_JAR" || echo_error "❌ missing"
+  echo -n "• python3: "; command -v python3 >/dev/null && python3 --version || echo_error "❌ missing"
+
+  echo ""
+  echo "Optional:"
+  echo -n "• jq (for JSON formatting): "; command -v jq >/dev/null && jq --version || echo_warn "⚠️  not installed"
+  echo -n "• dot/graphviz (for PNG plots): "; command -v dot >/dev/null && dot -V 2>&1 || echo_warn "⚠️  not installed"
+  echo -n "• pandoc (for docs): "; command -v pandoc >/dev/null && pandoc --version | head -n1 || echo_warn "⚠️  not installed"
+  echo -n "• inotifywait (for watch): "; command -v inotifywait >/dev/null && inotifywait --version 2>&1 | head -n1 || echo_warn "⚠️  not installed"
+  echo -n "• tla2json.jar: "; [[ -f "$JSON_JAR" ]] && echo "$JSON_JAR" || echo_warn "⚠️  not found"
 }
 
 check_files() {
@@ -133,7 +147,9 @@ run_backend_check() {
         java $JAVA_OPTS -cp "$JAR" pcal.trans "$TLA"
       fi
 
-      java $JAVA_OPTS -cp "$JAR" tlc2.TLC -workers $nworkers -deadlock -tool -config $CFG "$TLA"
+      # Dump trace to JSON on error
+      java $JAVA_OPTS -cp "$JAR" tlc2.TLC -workers $nworkers -deadlock -tool -config $CFG \
+        -dumpTrace json "${SPEC}_trace.json" "$TLA"
       ;;
   esac
 }
@@ -263,6 +279,24 @@ watch_spec() {
   done
 }
 
+plot_trace() {
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local plot_script="$script_dir/plot-trace.py"
+  local trace_file="${SPEC}_trace.json"
+
+  if [[ ! -f "$plot_script" ]]; then
+    echo_error "❌ plot-trace.py not found: $plot_script"
+    exit 1
+  fi
+
+  if [[ ! -f "$trace_file" ]]; then
+    echo_error "❌ No trace file: $trace_file"
+    exit 1
+  fi
+
+  python3 "$plot_script" "$trace_file" "${EXTRA_ARGS[@]}"
+}
+
 case "$CMD" in
   check|run)
     run_backend_check
@@ -275,6 +309,9 @@ case "$CMD" in
     ;;
   json)
     dump_trace_json
+    ;;
+  plot)
+    plot_trace
     ;;
   types)
     [[ "$BACKEND" = "apalache" ]] && run_apalache_types || echo "❌ TLC does not support types."
@@ -305,6 +342,7 @@ Available commands:
   simulate    Simulate random traces (TLC only)
   trace       Show counterexample trace (TLC)
   json        Export TLC trace to JSON
+  plot        Visualize trace (--dot FILE | --mermaid FILE | --table)
   types       Show inferred types (Apalache)
   init        Create new .tla and .cfg files with scaffolding
   list        List .tla spec files
@@ -314,6 +352,8 @@ Available commands:
 Examples:
   tlaq check tlc MySpec
   tlaq check apalache MySpec
+  tlaq plot MySpec
+  tlaq plot MySpec --dot trace.dot
   tlaq init --name MySpec --vars x --init 'x = 0' --next \"x' = x + 1\"
 EOF
     ;;
